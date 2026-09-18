@@ -17,5 +17,3 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      # Автоматическое создание топиков (удобно для теста)
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"

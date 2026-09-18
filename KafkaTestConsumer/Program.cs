@@ -1,56 +1,72 @@
 ﻿using Confluent.Kafka;
-using System;
-using System.Threading;
+using System.Text.Json;
 
-// 1. Конфигурация консьюмера
+
+string BootstrapServers = "localhost:9092";
+string Topic = "demo-topic";
+
+// Позволяет запускать несколько копий: dotnet run -- group-A
+Console.WriteLine("Введите id группы");
+string groupId = "demo-group-" + Console.ReadLine();
+Console.WriteLine(groupId);
 var config = new ConsumerConfig
 {
-    BootstrapServers = "localhost:9092",
-    GroupId = "test-consumer-group", // Идентификатор группы потребителей
-    AutoOffsetReset = AutoOffsetReset.Earliest // Читать с самого начала, если нет сохранённого offset
+    BootstrapServers = BootstrapServers,
+    GroupId = groupId,
+    AutoOffsetReset = AutoOffsetReset.Earliest,
+    EnableAutoCommit = false,       // ручной commit
+    EnableAutoOffsetStore = false   // коммитим только после обработки
 };
 
-const string topic = "test-topic";
+var cts = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
-// 2. Механизм graceful shutdown по Ctrl+C
-CancellationTokenSource cts = new CancellationTokenSource();
-Console.CancelKeyPress += (_, e) =>
+using var consumer = new ConsumerBuilder<Null, string>(config).Build();
+consumer.Subscribe(Topic);
+
+Console.WriteLine($"Consumer запущен. group.id={groupId}, topic='{Topic}'. Ctrl+C — выход.");
+
+try
 {
-    e.Cancel = true; // Отменяем завершение процесса по умолчанию
-    cts.Cancel();
-    Console.WriteLine("Завершение работы консьюмера...");
-};
-
-// 3. Создание консьюмера и подписка
-using (var consumer = new ConsumerBuilder<Null, string>(config).Build())
-{
-    consumer.Subscribe(topic);
-    Console.WriteLine($"Ожидание сообщений из топика '{topic}' (нажмите Ctrl+C для выхода)...");
-
-    try
+    while (!cts.IsCancellationRequested)
     {
-        while (!cts.IsCancellationRequested)
+        try
         {
+            var cr = consumer.Consume(cts.Token);
+
+            MessagePayload? payload = null;
             try
             {
-                // 4. Чтение сообщения
-                var consumeResult = consumer.Consume(cts.Token);
-                Console.WriteLine($"[ПОЛУЧЕНО] {consumeResult.Message.Value}");
+                payload = JsonSerializer.Deserialize<MessagePayload>(cr.Message.Value);
             }
-            catch (ConsumeException e)
+            catch (JsonException)
             {
-                Console.WriteLine($"[ОШИБКА] Ошибка потребления: {e.Error.Reason}");
+                Console.WriteLine($"[WARN] Не удалось распарсить JSON: {cr.Message.Value}");
             }
+
+            // Здесь была бы ваша бизнес-логика
+            Console.WriteLine(
+                $"[RECV] id={payload?.Id} payload={payload?.Payload} " +
+                $"partition={cr.Partition.Value} offset={cr.Offset.Value}");
+
+            // Ручной commit после успешной обработки
+            consumer.Commit(cr);
+        }
+        catch (ConsumeException ex)
+        {
+            Console.WriteLine($"[ERROR] {ex.Error.Reason}");
         }
     }
-    catch (OperationCanceledException)
-    {
-        // Ожидаемое исключение при нажатии Ctrl+C
-    }
-    finally
-    {
-        // 5. Корректное закрытие консьюмера (фиксация offset)
-        consumer.Close();
-        Console.WriteLine("Консьюмер остановлен.");
-    }
+}
+catch (OperationCanceledException) { }
+finally
+{
+    consumer.Close(); // фиксирует позицию и выходит из группы
+    Console.WriteLine("Consumer остановлен.");
+}
+public class MessagePayload
+{
+    public string Id { get; set; } = default!;
+    public DateTimeOffset Timestamp { get; set; }
+    public string Payload { get; set; } = default!;
 }

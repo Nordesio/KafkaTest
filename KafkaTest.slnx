@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="KafkaAdmin/KafkaAdmin.csproj" Id="20e271dd-d0b4-4165-a8e7-ea7dbb2ebefa" />
   <Project Path="KafkaTestConsumer/KafkaTestConsumer.csproj" Id="c428bcf4-e8b1-4498-a6b2-cde7896c7905" />
   <Project Path="KafkaTestProducer/KafkaTestProducer.csproj" Id="e363f412-32e4-4b3d-9752-eb72629d6a7d" />
 </Solution>
